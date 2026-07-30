@@ -11,6 +11,7 @@ import PositionsTable from './PositionsTable.vue'
 import HistoryTable from './HistoryTable.vue'
 import FuturesChart from './FuturesChart.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import FuturesBotPanel from './FuturesBotPanel.vue'
 
 const account = ref(null)
 const markets = ref([])
@@ -21,7 +22,7 @@ const error = ref('')
 const loading = ref(true)
 const showReset = ref(false)
 const botStatus = ref(null)
-const botBusy = ref(false)
+const botBusy = ref('')
 let timer = null
 let botTimer = null
 
@@ -50,12 +51,13 @@ async function refreshBotStatus() {
   try { botStatus.value = await fapi.botStatus() } catch { /* เงียบไว้ ไม่รบกวนจอหลัก */ }
 }
 
-async function toggleBot() {
-  botBusy.value = true
+async function toggleBot(sym) {
+  botBusy.value = sym
   try {
-    await fapi.setBotEnabled(!botStatus.value?.enabled)
+    const nowEnabled = !botStatus.value?.symbols?.[sym]?.enabled
+    await fapi.setBotEnabled(sym, nowEnabled)
     await refreshBotStatus()
-  } finally { botBusy.value = false }
+  } finally { botBusy.value = '' }
 }
 
 async function onChanged() { await refresh(true) }
@@ -78,17 +80,6 @@ onMounted(async () => {
 onUnmounted(() => { clearInterval(timer); clearInterval(botTimer) })
 
 const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
-function secsAgo(iso) {
-  if (!iso) return null
-  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
-}
-function botFreshness() {
-  const s = secsAgo(botStatus.value?.checked_at)
-  if (s === null) return 'ยังไม่เคยเช็ค'
-  if (s < 90) return `เช็คล่าสุด ${s}s ที่แล้ว`
-  return `ค้างมา ${Math.round(s / 60)} นาที — ตรวจว่า backend ยังรันอยู่ไหม`
-}
-const botStale = () => { const s = secsAgo(botStatus.value?.checked_at); return s === null || s > 150 }
 </script>
 
 <template>
@@ -138,7 +129,7 @@ const botStale = () => { const s = secsAgo(botStatus.value?.checked_at); return 
         <div class="col-side">
           <OrderPanel :symbol="symbol" :mark-price="current.mark_price"
                       :available="account.available_margin" :leverage="levOf"
-                      :funding-pct="current.funding_rate_pct"
+                      :funding-pct="current.funding_rate_pct" :locked="!!heldPosition"
                       @submitted="onChanged" @leverage="refresh(false)" />
 
           <div class="card feed">
@@ -150,28 +141,7 @@ const botStale = () => { const s = secsAgo(botStatus.value?.checked_at); return 
             </div>
           </div>
 
-          <div class="card bot" :class="{ on: botStatus?.enabled }">
-            <div class="bot-head">
-              <div>
-                <span class="ttl">บอทอัตโนมัติ — BTC/USDT</span>
-                <p class="muted tiny">
-                  ใช้สมองเดียวกับบอท spot (MA{{ 20 }}/{{ 50 }}+regime) leverage ตายตัว
-                  {{ botStatus?.leverage || 5 }}x เสี่ยง 1%/ไม้ ปิดเองทันทีถ้าสัญญาณดับ
-                </p>
-              </div>
-              <button class="toggle" :class="{ on: botStatus?.enabled }" :disabled="botBusy"
-                      @click="toggleBot">
-                {{ botStatus?.enabled ? 'ปิด' : 'เปิด' }}
-              </button>
-            </div>
-            <div v-if="botStatus?.enabled" class="bot-status">
-              <span :class="botStale() ? 'down' : 'up'">
-                {{ botStale() ? '⚠' : '●' }} {{ botFreshness() }}
-              </span>
-              <span v-if="botStatus.regime" class="muted"> · {{ botStatus.regime }}</span>
-              <div v-if="botStatus.detail" class="muted detail">{{ botStatus.detail }}</div>
-            </div>
-          </div>
+          <FuturesBotPanel v-if="botStatus" :status="botStatus" :busy="botBusy" @toggle="toggleBot" />
 
           <div class="card note">
             <span class="ttl">อ่านก่อนซ้อม</span>
@@ -246,19 +216,6 @@ h1 { font-size: 21px; font-weight: 500; margin: 0 0 5px; letter-spacing: -.01em;
 .ev.liquidation .ev-msg { color: #dc2626; font-weight: 500; }
 .ev.funding .ev-msg { color: var(--ink-3); }
 .tiny { font-size: 12px; }
-
-.bot { display: flex; flex-direction: column; gap: 10px; transition: border-color .15s ease; }
-.bot.on { border-color: var(--ink-3); }
-.bot-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.bot-head p.tiny { margin: 4px 0 0; line-height: 1.55; }
-.toggle {
-  flex: 0 0 auto; border: 1px solid var(--line); background: transparent; color: var(--ink);
-  padding: 6px 14px; border-radius: 8px; font: inherit; font-size: 12px; cursor: pointer;
-}
-.toggle.on { background: var(--dark); color: #fff; border-color: var(--dark); }
-.toggle:disabled { opacity: .5; cursor: not-allowed; }
-.bot-status { font-size: 11.5px; border-top: 1px solid var(--line); padding-top: 10px; }
-.bot-status .detail { margin-top: 4px; color: var(--ink-3); }
 
 .note { display: flex; flex-direction: column; gap: 10px; }
 .note ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }

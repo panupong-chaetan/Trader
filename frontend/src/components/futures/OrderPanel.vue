@@ -9,6 +9,7 @@ const props = defineProps({
   available: Number,
   leverage: Number,
   fundingPct: Number,
+  locked: Boolean,   // true = มีไม้ของ symbol นี้เปิดอยู่ -> เปลี่ยน leverage ไม่ได้จนกว่าจะปิดไม้
 })
 const emit = defineEmits(['submitted', 'leverage'])
 
@@ -71,6 +72,7 @@ function setMarginPct(p) {
 }
 
 async function changeLev(v) {
+  if (props.locked) return   // มีไม้เปิดอยู่ — ปุ่ม/สไลเดอร์ถูกล็อกไว้ใน template แล้ว กันเรียกซ้ำ
   lev.value = v
   try { await fapi.leverage(props.symbol, v); emit('leverage', v) } catch (e) { err.value = e.message }
 }
@@ -124,11 +126,14 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
         <b class="mono">{{ lev }}x</b>
       </label>
       <input type="range" min="1" max="125" v-model.number="lev" class="range"
-             @change="changeLev(lev)" />
+             :disabled="locked" @change="changeLev(lev)" />
       <div class="chips">
-        <button v-for="p in LEV_PRESETS" :key="p"
+        <button v-for="p in LEV_PRESETS" :key="p" :disabled="locked"
                 :class="['chip', lev === p && 'on']" @click="changeLev(p)">{{ p }}x</button>
       </div>
+      <p v-if="locked" class="lock-note">
+        🔒 มีไม้ {{ symbol }} เปิดอยู่ — ปิดไม้ก่อนถึงจะเปลี่ยน leverage ได้
+      </p>
     </div>
 
     <!-- margin -->
@@ -235,7 +240,10 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
 .range { width: 100%; accent-color: #171717; }
+.range:disabled { opacity: .4; cursor: not-allowed; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip:disabled { opacity: .4; cursor: not-allowed; }
+.lock-note { font-size: 11px; color: var(--ink-3); margin: 2px 0 0; }
 .chip {
   border: 1px solid var(--line); background: transparent; color: var(--ink-3);
   padding: 4px 9px; border-radius: 7px; font: inherit; font-size: 11px; cursor: pointer;

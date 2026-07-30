@@ -34,6 +34,6 @@ export const fapi = {
   reset: (balance) =>
     req('/reset', { method: 'POST', body: JSON.stringify({ balance, confirm: true }) }),
   botStatus: () => req('/bot-status'),
-  setBotEnabled: (enabled) =>
-    req('/bot-toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  setBotEnabled: (symbol, enabled) =>
+    req('/bot-toggle', { method: 'POST', body: JSON.stringify({ symbol, enabled }) }),
 }

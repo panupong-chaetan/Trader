@@ -15,6 +15,7 @@ const props = defineProps({ symbol: String, position: Object, markPrice: Number 
 const el = ref(null)
 const tf = ref('15m')
 const err = ref('')
+const empty = ref(false)
 const TFS = ['5m', '15m', '1h', '4h', '1d']
 
 let chart = null
@@ -25,6 +26,7 @@ let lines = []
 function build() {
   chart = createChart(el.value, {
     height: 320,
+    autoSize: true,   // กันกราฟกว้าง 0px ตอน container ยังไม่ layout เสร็จ (เช่นสลับ tab เร็วๆ)
     layout: { background: { color: 'transparent' }, textColor: '#8a8a85', fontSize: 11 },
     grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(0,0,0,.05)' } },
     rightPriceScale: { borderVisible: false },
@@ -45,6 +47,10 @@ async function load() {
   try {
     const { candles } = await fapi.candles(props.symbol, tf.value, 300)
     series?.setData(candles)
+    // สลับเหรียญที่ราคาช่วงต่างกันมาก (เช่น BTC ~65,000 -> SOL ~75) ถ้าไม่สั่ง fit
+    // เอง มุมมองเดิมจากเหรียญก่อนหน้าอาจไม่ครอบคลุมข้อมูลใหม่เลย ดูเหมือนกราฟว่าง
+    chart?.timeScale().fitContent()
+    empty.value = !candles?.length
     err.value = ''
   } catch (e) { err.value = e.message }
 }
@@ -92,6 +98,9 @@ watch(() => props.position, drawLines, { deep: true })
     </div>
     <div ref="el" class="canvas" />
     <p v-if="err" class="down msg">โหลดกราฟไม่ได้: {{ err }}</p>
+    <p v-else-if="empty" class="muted msg">
+      ตลาดนี้ยังไม่มีแท่งเทียนกลับมา (API ตอบว่างเปล่า) — ลองเปลี่ยนไทม์เฟรมหรือรอสักครู่
+    </p>
   </div>
 </template>
 

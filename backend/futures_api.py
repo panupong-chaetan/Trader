@@ -38,17 +38,22 @@ router = APIRouter(prefix="/api/futures", tags=["futures"])
 # ให้ TP/SL/liquidation เดินต่อแม้ปิดเบราว์เซอร์
 fx.start_background_ticker(interval=10)
 
-# ─────────────── บอทอัตโนมัติ (BTC/USDT เท่านั้น, leverage ตายตัว 5x) ───────────────
-BOT_SYMBOL = "BTC/USDT"
+# ─────────────── บอทอัตโนมัติ (ทุกเหรียญในวอชลิสต์, leverage ตายตัว 5x ต่อไม้) ───────────────
+# เดิมเทรดแค่ BTC/USDT เหรียญเดียว ขยายให้ครอบคลุมทุกเหรียญใน fx.SYMBOLS โดยแยก
+# สวิตช์เปิด/ปิดรายเหรียญ (เหมือน auto_toggle.json ฝั่ง spot) — เหตุผลที่แยกสวิตช์
+# แทนเปิดปิดรวมเหรียญเดียว: ผู้ใช้ควรเลือกได้ว่าไว้ใจให้บอทเล่นเหรียญไหนบ้าง ไม่ใช่
+# all-or-nothing เพราะแต่ละเหรียญความผันผวน/สภาพคล่องไม่เท่ากัน
 BOT_TIMEFRAME = "1h"
 BOT_POLL_SEC = 60
 BOT_LEVERAGE = 5          # ตายตัว ไม่มีช่องให้ UI ปรับสูงกว่านี้ กันมือลื่นขยับ risk
 BOT_MIN_MARGIN = 6.0
 BOT_TOGGLE_FILE = os.path.join(_here, "futures_bot_toggle.json")
 BOT_LOG = os.path.join(_here, "futures_bot.log")
+BOT_SYMBOLS = [s["symbol"] for s in fx.SYMBOLS]
 
 _bot_ex = ccxt.binanceusdm({"enableRateLimit": True})
-_bot_status: dict = {"enabled": False, "checked_at": None, "action": None, "detail": None}
+_bot_status: dict[str, dict] = {s: {"enabled": False, "checked_at": None,
+                                     "action": None, "detail": None} for s in BOT_SYMBOLS}
 
 
 def bot_log(msg: str) -> None:
@@ -58,18 +63,35 @@ def bot_log(msg: str) -> None:
         f.write(line + "\n")
 
 
-def bot_enabled() -> bool:
+def _bot_toggle_default() -> dict:
+    return {s: False for s in BOT_SYMBOLS}
+
+
+def _load_bot_toggles() -> dict:
     if not os.path.exists(BOT_TOGGLE_FILE):
-        return False
+        return _bot_toggle_default()
     try:
-        return json.load(open(BOT_TOGGLE_FILE, encoding="utf-8")).get("enabled", False)
+        raw = json.load(open(BOT_TOGGLE_FILE, encoding="utf-8"))
     except Exception:
-        return False
+        return _bot_toggle_default()
+    # รองรับไฟล์เก่าก่อนขยายเป็นหลายเหรียญ: {"enabled": bool} ตัวเดียวคุม BTC
+    if "enabled" in raw and not any(s in raw for s in BOT_SYMBOLS):
+        return {**_bot_toggle_default(), "BTC/USDT": raw["enabled"]}
+    out = _bot_toggle_default()
+    out.update({s: bool(raw.get(s, False)) for s in BOT_SYMBOLS})
+    return out
 
 
-def set_bot_enabled(v: bool) -> None:
+def bot_enabled(symbol: str) -> bool:
+    return _load_bot_toggles().get(symbol, False)
+
+
+def set_bot_enabled(symbol: str, v: bool) -> dict:
+    toggles = _load_bot_toggles()
+    toggles[symbol] = v
     with open(BOT_TOGGLE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"enabled": v}, f)
+        json.dump(toggles, f)
+    return toggles
 
 
 def _bot_decide(a: dict, closes: list) -> tuple[str | None, float | None]:
@@ -87,26 +109,29 @@ def _bot_size_margin(equity: float, price: float, stop: float, leverage: int) ->
     return (equity * RISK_PCT / 100) / (stop_dist_pct * leverage)
 
 
-def _futures_bot_tick() -> None:
-    enabled = bot_enabled()
-    _bot_status["enabled"] = enabled
+def _futures_bot_tick_symbol(symbol: str, enabled: bool) -> None:
+    """ประมวลผลเหรียญเดียว 1 รอบ — เรียกทุกเหรียญทุก tick แต่ข้ามงานทั้งหมดถ้าปิดสวิตช์
+    (ไม่ยิง exchange เลยสำหรับเหรียญที่ปิดไว้ — ประหยัด API เรียก/rate limit จริง)"""
+    _bot_status[symbol]["enabled"] = enabled
     if not enabled:
         return
 
     try:
-        ohlcv = _bot_ex.fetch_ohlcv(BOT_SYMBOL, BOT_TIMEFRAME, limit=SLOW + SLOPE_BARS + 5)
+        ohlcv = _bot_ex.fetch_ohlcv(symbol, BOT_TIMEFRAME, limit=SLOW + SLOPE_BARS + 5)
         closes = [c[4] for c in ohlcv[:-1]]
         a = analyze(closes)
         side_wanted, stop = _bot_decide(a, closes)
     except Exception as e:
-        _bot_status.update(checked_at=datetime.now().isoformat(timespec="seconds"),
-                           action="error", detail=str(e))
-        bot_log(f"ดึงราคา/วิเคราะห์ไม่ได้: {e} — ลองใหม่รอบหน้า")
+        _bot_status[symbol].update(checked_at=datetime.now().isoformat(timespec="seconds"),
+                                   action="error", detail=str(e))
+        bot_log(f"[{symbol}] ดึงราคา/วิเคราะห์ไม่ได้: {e} — ลองใหม่รอบหน้า")
         return
 
+    # ดึงพอร์ตสดต่อเหรียญ (ไม่ใช้ค่าที่ cache จากเหรียญก่อนหน้าใน tick เดียวกัน) —
+    # กัน margin ที่คำนวณไว้เพี้ยนถ้าเหรียญก่อนหน้าเพิ่งเปิดไม้ไปกินพื้นที่ margin แล้ว
     acc = fx.account()
     equity = acc["equity"]
-    existing = next((p for p in acc["positions"] if p["symbol"] == BOT_SYMBOL), None)
+    existing = next((p for p in acc["positions"] if p["symbol"] == symbol), None)
     status = {"checked_at": datetime.now().isoformat(timespec="seconds"),
               "enabled": True, "regime": a["regime"], "price": a["price"]}
 
@@ -115,10 +140,10 @@ def _futures_bot_tick() -> None:
         if side_wanted != held:
             reason = "สัญญาณดับ" if side_wanted is None else f"สัญญาณกลับด้าน -> {side_wanted}"
             try:
-                r = fx.close_position(BOT_SYMBOL, 1.0, f"[BOT] {reason}", trigger="manual")
+                r = fx.close_position(symbol, 1.0, f"[BOT] {reason}", trigger="manual")
                 status.update(action="closed", detail=f"ปิด {held.upper()} เพราะ {reason} "
                               f"PnL {r['net_pnl']:+.2f} USDT")
-                bot_log(f"ปิด {held.upper()} เพราะ {reason} | PnL {r['net_pnl']:+.2f} USDT")
+                bot_log(f"[{symbol}] ปิด {held.upper()} เพราะ {reason} | PnL {r['net_pnl']:+.2f} USDT")
             except ValueError as e:
                 status.update(action="error", detail=str(e))
         else:
@@ -133,7 +158,7 @@ def _futures_bot_tick() -> None:
                           detail=f"margin ไม่พอ (ต้องการ {margin:.2f} เหลือ {acc['available_margin']:.2f})")
         else:
             try:
-                r = fx.open_position(BOT_SYMBOL, side_wanted, margin=round(margin, 2),
+                r = fx.open_position(symbol, side_wanted, margin=round(margin, 2),
                                      leverage=BOT_LEVERAGE, sl=round(stop, 2),
                                      reason=f"[BOT] {a['regime']} MA{FAST}/{SLOW} "
                                             f"slope={a['slope_pct']:+.2f}%")
@@ -141,19 +166,25 @@ def _futures_bot_tick() -> None:
                 status.update(action="opened",
                               detail=f"เปิด {side_wanted.upper()} margin={margin:.2f}{note} "
                                      f"@ {r['entry_price']:,.2f}")
-                bot_log(f"เปิด {side_wanted.upper()} margin={margin:.2f} {BOT_LEVERAGE}x "
+                bot_log(f"[{symbol}] เปิด {side_wanted.upper()} margin={margin:.2f} {BOT_LEVERAGE}x "
                        f"@ {r['entry_price']:,.2f} sl={stop:,.2f}")
             except ValueError as e:
                 status.update(action="error", detail=str(e))
     else:
         status.update(action="waiting", detail=f"regime={a['regime']} — ยังไม่เข้าเงื่อนไข")
 
-    _bot_status.update(status)
+    _bot_status[symbol].update(status)
+
+
+def _futures_bot_tick() -> None:
+    toggles = _load_bot_toggles()
+    for symbol in BOT_SYMBOLS:
+        _futures_bot_tick_symbol(symbol, toggles.get(symbol, False))
 
 
 def _futures_bot_loop() -> None:
-    bot_log(f"Futures bot thread พร้อมทำงาน | {BOT_SYMBOL} {BOT_TIMEFRAME} | "
-           f"leverage {BOT_LEVERAGE}x ตายตัว | ปิดอยู่โดย default รอเปิดจากหน้าเว็บ")
+    bot_log(f"Futures bot thread พร้อมทำงาน | {len(BOT_SYMBOLS)} เหรียญ ({', '.join(BOT_SYMBOLS)}) "
+           f"| leverage {BOT_LEVERAGE}x ตายตัว | ปิดอยู่โดย default ทุกเหรียญ รอเปิดจากหน้าเว็บ")
     while True:
         try:
             _futures_bot_tick()
@@ -317,16 +348,22 @@ def post_reset(body: ResetIn):
 # ─────────────── บอทอัตโนมัติ ───────────────
 
 class BotToggleIn(BaseModel):
+    symbol: str
     enabled: bool
 
 @router.get("/bot-status")
 def get_bot_status():
-    """สถานะบอท — ให้หน้าเว็บเห็นว่าเช็คล่าสุดเมื่อไหร่ กำลังทำอะไรอยู่ ไม่ใช่สวิตช์ลอยๆ"""
-    return {**_bot_status, "enabled": bot_enabled(), "symbol": BOT_SYMBOL,
-            "leverage": BOT_LEVERAGE, "poll_sec": BOT_POLL_SEC}
+    """สถานะบอทของทุกเหรียญ — ให้หน้าเว็บเห็นว่าเช็คล่าสุดเมื่อไหร่ กำลังทำอะไรอยู่"""
+    toggles = _load_bot_toggles()
+    return {
+        "symbols": {s: {**_bot_status[s], "enabled": toggles.get(s, False)} for s in BOT_SYMBOLS},
+        "leverage": BOT_LEVERAGE, "poll_sec": BOT_POLL_SEC, "risk_pct": RISK_PCT,
+    }
 
 @router.post("/bot-toggle")
 def post_bot_toggle(body: BotToggleIn):
-    set_bot_enabled(body.enabled)
-    bot_log(f"บอทถูก{'เปิด' if body.enabled else 'ปิด'}จากหน้าเว็บ")
-    return {"enabled": body.enabled}
+    if body.symbol not in BOT_SYMBOLS:
+        raise HTTPException(400, f"ไม่รู้จัก {body.symbol}")
+    toggles = set_bot_enabled(body.symbol, body.enabled)
+    bot_log(f"[{body.symbol}] บอทถูก{'เปิด' if body.enabled else 'ปิด'}จากหน้าเว็บ")
+    return toggles

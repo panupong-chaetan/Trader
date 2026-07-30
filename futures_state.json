@@ -1,48 +1,61 @@
 {
-  "wallet_balance": 9999.409889994118,
+  "wallet_balance": 9993.686599999999,
   "initial_balance": 10000.0,
   "positions": {
     "BTC/USDT": {
       "side": "long",
-      "qty": 0.015425290334656666,
-      "entry_price": 64828.60149175,
-      "leverage": 10,
-      "margin": 100.0,
-      "tp": 71311.07,
-      "sl": 63519.19,
-      "fees_paid": 0.5,
-      "funding_paid": 0.09011000588269923,
+      "qty": 0.14834269265052144,
+      "entry_price": 64722.09603623,
+      "leverage": 5,
+      "margin": 1920.21,
+      "tp": null,
+      "sl": 64167.03,
+      "fees_paid": 4.8005249999999995,
+      "funding_paid": 0.0,
       "realized_partial": 0.0,
-      "opened_at": "2026-07-30T12:45:46+00:00",
-      "reason": "",
+      "opened_at": "2026-07-30T18:37:24+00:00",
+      "reason": "[BOT] TREND_UP MA20/50 slope=+0.39%",
       "adds": 0,
-      "liq_price": 58580.06158893072
+      "liq_price": 51985.619306208835
+    },
+    "BNB/USDT": {
+      "side": "long",
+      "qty": 5.077498052894236,
+      "entry_price": 595.9135717,
+      "leverage": 5,
+      "margin": 605.15,
+      "tp": null,
+      "sl": 574.62,
+      "fees_paid": 1.512875,
+      "funding_paid": 0.0,
+      "realized_partial": 0.0,
+      "opened_at": "2026-07-30T18:46:17+00:00",
+      "reason": "[BOT] TREND_UP MA20/50 slope=+0.72%",
+      "adds": 0,
+      "liq_price": 478.6454391164659
     }
   },
   "history": [],
   "events": [
     {
-      "ts": "2026-07-30T16:00:05+00:00",
-      "kind": "funding",
-      "symbol": "BTC/USDT",
-      "message": "funding +0.0090% → จ่าย 0.0901 USDT",
-      "amount": -0.09011000588269923
+      "ts": "2026-07-30T18:46:17+00:00",
+      "kind": "open",
+      "symbol": "BNB/USDT",
+      "message": "เปิด LONG 5.077498 @ 595.91 | 5x | margin 605.15 | liq 478.65"
     },
     {
-      "ts": "2026-07-30T12:45:46+00:00",
+      "ts": "2026-07-30T18:37:24+00:00",
       "kind": "open",
       "symbol": "BTC/USDT",
-      "message": "เปิด LONG 0.015425 @ 64,828.60 | 10x | margin 100.00 | liq 58,580.06"
+      "message": "เปิด LONG 0.148343 @ 64,722.10 | 5x | margin 1920.21 | liq 51,985.62"
     }
   ],
-  "leverage": {
-    "BTC/USDT": 10
-  },
-  "peak_equity": 10004.069100339111,
-  "max_drawdown_pct": 0.07785737695878797,
-  "total_fees": 0.5,
-  "total_funding": 0.09011000588269923,
+  "leverage": {},
+  "peak_equity": 10000.0,
+  "max_drawdown_pct": 0.14809910394678807,
+  "total_fees": 6.3134,
+  "total_funding": 0.0,
   "liquidations": 0,
-  "created_at": "2026-07-30T12:38:22+00:00",
+  "created_at": "2026-07-30T18:36:52+00:00",
   "last_funding_slot": "2026-07-30T16"
 }
