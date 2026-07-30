@@ -1,0 +1,66 @@
+/* Design tokens — Black & White ตามภาพอ้างอิง */
+:root {
+  --bg: #f4f4f2;            /* พื้นเทาอ่อน */
+  --card: #ffffff;
+  --ink: #171717;           /* ดำหลัก */
+  --ink-2: #737373;         /* เทารอง */
+  --ink-3: #a3a3a3;
+  --line: #e5e5e3;          /* เส้นขอบการ์ด */
+  --dark: #171717;          /* การ์ดดำ/ปุ่มดำ */
+  --up: #059669;            /* accent เดียวที่อนุญาต: ตัวเลขกำไร */
+  --down: #ef4444;          /*                        ตัวเลขขาดทุน */
+  --r-lg: 14px;             /* ความมนการ์ดใหญ่ */
+  --r-md: 10px;
+  --r-pill: 999px;
+}
+
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: 'Inter', 'Noto Sans Thai', system-ui, sans-serif;
+  font-size: 14px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 24px;
+}
+.card--dark { background: var(--dark); color: #fff; border-color: var(--dark); }
+
+.btn {
+  border: 0; cursor: pointer; font: inherit; font-weight: 500;
+  padding: 10px 20px; border-radius: 10px;
+  background: var(--dark); color: #fff; transition: background .15s;
+}
+.btn:hover { background: #404040; }
+.btn:disabled { background: #e5e5e5; color: #a3a3a3; cursor: not-allowed; }
+.btn--ghost { background: transparent; color: var(--ink-2); }
+.btn--ghost:hover { background: #f0f0ee; }
+
+.pill {
+  padding: 4px 12px; border-radius: var(--r-pill); font-size: 12px;
+  background: transparent; color: var(--ink-2); border: 0; cursor: pointer;
+}
+.pill.active { background: var(--dark); color: #fff; }
+
+.input {
+  width: 100%; padding: 12px 16px; font: inherit;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: #fafafa; outline: none;
+}
+.input:focus { border-color: var(--ink-3); }
+
+.muted { color: var(--ink-2); } .faint { color: var(--ink-3); }
+.up { color: var(--up); } .down { color: var(--down); }
+.num-lg { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+
+.dotgrid {  /* กริดจุดใต้กราฟ แบบภาพอ้างอิง */
+  background-image: radial-gradient(#d9d9d6 1px, transparent 1px);
+  background-size: 18px 18px; border-radius: var(--r-md);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 400; color: var(--ink-3); font-size: 12px;
+     padding-bottom: 8px; border-bottom: 1px solid #f0f0ee; }
+td { padding: 12px 0; border-bottom: 1px solid #fafafa; }

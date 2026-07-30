@@ -1,0 +1,53 @@
+{
+  "cash": 57.535743187588196,
+  "positions": {
+    "BTCTHB": {
+      "symbol": "BTCTHB",
+      "time_in": "2026-07-30 17:04:05",
+      "entry": 2167556.0,
+      "stop": 2145633.0,
+      "target": 2.0,
+      "units": 0.0025484856334145522,
+      "cost": 5523.985325621513,
+      "fee_in": 5.523985325621513,
+      "risk_pct": 1.0,
+      "reason": "[สวนคำแนะนำ SIDEWAYS] มีสัญญาณ trend up"
+    },
+    "ETHTHB": null,
+    "BNBTHB": {
+      "symbol": "BNBTHB",
+      "time_in": "2026-07-30 17:02:32",
+      "entry": 19446.45,
+      "stop": 19004.22,
+      "target": 2.0,
+      "units": 0.22567442281165928,
+      "cost": 4388.566379485792,
+      "fee_in": 4.388566379485792,
+      "risk_pct": 1.0,
+      "reason": "trend up"
+    },
+    "SOLTHB": null,
+    "XRPTHB": null
+  },
+  "closed_trades": [
+    {
+      "symbol": "XRPTHB",
+      "time_in": "2026-07-30 14:01:13",
+      "entry": 36.11,
+      "stop": 35.76,
+      "target": 1.0,
+      "units": 276.93159789531984,
+      "cost": 10000.0,
+      "fee_in": 10.0,
+      "risk_pct": 1.0,
+      "reason": "[สวนคำแนะนำ SIDEWAYS] 99% เลย มีสัญญาณกำลังจะขึ้น",
+      "time_out": "2026-07-30 14:05:18",
+      "exit": 36.11,
+      "fee_out": 10.0,
+      "pnl_pct": 0.0,
+      "pnl_money": -20.0,
+      "followed_plan": false,
+      "note": ""
+    }
+  ]
+}
