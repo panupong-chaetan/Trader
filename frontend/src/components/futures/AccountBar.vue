@@ -60,10 +60,16 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
 
 <style scoped>
 .bar {
-  display: grid; grid-template-columns: 1.6fr repeat(auto-fit, minmax(120px, 1fr));
+  /* เดิมผสม 1.6fr นำหน้า + repeat(auto-fit, minmax(...)) ในบรรทัดเดียวกัน — สอง
+     track-sizing function ต่างชนิดที่ต้อง resolve พร้อมกันแบบนี้ browser คำนวณ
+     จำนวนคอลัมน์ auto-fit พลาดได้ง่าย (พังจนเหลือคอลัมน์เดียว ทุกการ์ดเรียงเต็มความ
+     กว้างทีละแถว) เปลี่ยนเป็น track เดียวกันหมด แล้วให้การ์งแรกกว้างขึ้นด้วย
+     grid-column:span แทน — วิธีมาตรฐานที่ resolve ได้แน่นอนกว่า */
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1px; background: var(--line); border: 1px solid var(--line);
   border-radius: 14px; overflow: hidden;
 }
+.cell.wide { grid-column: span 2; }
 .cell { background: #fff; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
 .lbl { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .cell strong { font-weight: 500; font-size: 14px; }
@@ -71,5 +77,5 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
 .big { font-size: 24px; letter-spacing: -.02em; }
 .big em { font-style: normal; font-size: 12px; color: var(--ink-3); font-weight: 400; }
 .sub { font-size: 12px; }
-@media (max-width: 900px) { .bar { grid-template-columns: 1fr 1fr; } .wide { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .bar { grid-template-columns: 1fr 1fr; } .cell.wide { grid-column: 1 / -1; } }
 </style>

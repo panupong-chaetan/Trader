@@ -10,6 +10,7 @@ import OrderPanel from './OrderPanel.vue'
 import PositionsTable from './PositionsTable.vue'
 import HistoryTable from './HistoryTable.vue'
 import FuturesChart from './FuturesChart.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const account = ref(null)
 const markets = ref([])
@@ -18,7 +19,11 @@ const stats = ref(null)
 const symbol = ref('BTC/USDT')
 const error = ref('')
 const loading = ref(true)
+const showReset = ref(false)
+const botStatus = ref(null)
+const botBusy = ref(false)
 let timer = null
+let botTimer = null
 
 const current = computed(() => markets.value.find((m) => m.symbol === symbol.value) || {})
 const heldPosition = computed(() =>
@@ -41,22 +46,49 @@ async function refresh(full = false) {
   }
 }
 
+async function refreshBotStatus() {
+  try { botStatus.value = await fapi.botStatus() } catch { /* เงียบไว้ ไม่รบกวนจอหลัก */ }
+}
+
+async function toggleBot() {
+  botBusy.value = true
+  try {
+    await fapi.setBotEnabled(!botStatus.value?.enabled)
+    await refreshBotStatus()
+  } finally { botBusy.value = false }
+}
+
 async function onChanged() { await refresh(true) }
 
-async function resetPort() {
-  const v = prompt('ล้างพอร์ต futures แล้วเริ่มใหม่ ด้วยทุนกี่ USDT?', '10000')
-  if (!v) return
-  await fapi.reset(Number(v))
+function openReset() { showReset.value = true }
+async function confirmReset(value) {
+  showReset.value = false
+  const n = Number(value)
+  if (!n || n <= 0) return
+  await fapi.reset(n)
   await refresh(true)
 }
 
 onMounted(async () => {
   await refresh(true)
+  await refreshBotStatus()
   timer = setInterval(() => refresh(false), 3000)
+  botTimer = setInterval(refreshBotStatus, 8000)
 })
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => { clearInterval(timer); clearInterval(botTimer) })
 
 const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
+function secsAgo(iso) {
+  if (!iso) return null
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
+}
+function botFreshness() {
+  const s = secsAgo(botStatus.value?.checked_at)
+  if (s === null) return 'ยังไม่เคยเช็ค'
+  if (s < 90) return `เช็คล่าสุด ${s}s ที่แล้ว`
+  return `ค้างมา ${Math.round(s / 60)} นาที — ตรวจว่า backend ยังรันอยู่ไหม`
+}
+const botStale = () => { const s = secsAgo(botStatus.value?.checked_at); return s === null || s > 150 }
 </script>
 
 <template>
@@ -69,7 +101,7 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
           funding และการล้างพอร์ตครบเหมือนของจริง
         </p>
       </div>
-      <button class="ghost" @click="resetPort">ล้างพอร์ตเริ่มใหม่</button>
+      <button class="ghost" @click="openReset">ล้างพอร์ตเริ่มใหม่</button>
     </header>
 
     <div v-if="error" class="card alert">
@@ -118,6 +150,29 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
             </div>
           </div>
 
+          <div class="card bot" :class="{ on: botStatus?.enabled }">
+            <div class="bot-head">
+              <div>
+                <span class="ttl">บอทอัตโนมัติ — BTC/USDT</span>
+                <p class="muted tiny">
+                  ใช้สมองเดียวกับบอท spot (MA{{ 20 }}/{{ 50 }}+regime) leverage ตายตัว
+                  {{ botStatus?.leverage || 5 }}x เสี่ยง 1%/ไม้ ปิดเองทันทีถ้าสัญญาณดับ
+                </p>
+              </div>
+              <button class="toggle" :class="{ on: botStatus?.enabled }" :disabled="botBusy"
+                      @click="toggleBot">
+                {{ botStatus?.enabled ? 'ปิด' : 'เปิด' }}
+              </button>
+            </div>
+            <div v-if="botStatus?.enabled" class="bot-status">
+              <span :class="botStale() ? 'down' : 'up'">
+                {{ botStale() ? '⚠' : '●' }} {{ botFreshness() }}
+              </span>
+              <span v-if="botStatus.regime" class="muted"> · {{ botStatus.regime }}</span>
+              <div v-if="botStatus.detail" class="muted detail">{{ botStatus.detail }}</div>
+            </div>
+          </div>
+
           <div class="card note">
             <span class="ttl">อ่านก่อนซ้อม</span>
             <ul>
@@ -132,6 +187,20 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
         </div>
       </div>
     </template>
+
+    <ConfirmDialog
+      :open="showReset"
+      title="ล้างพอร์ตเริ่มใหม่"
+      message="ไม้ที่เปิดอยู่ทั้งหมดจะถูกล้างไปด้วย ย้อนกลับไม่ได้ (แต่ log เหตุการณ์เก่ายังอยู่)"
+      tone="danger"
+      with-input
+      input-label="ทุนเริ่มต้นใหม่ (USDT)"
+      input-type="number"
+      :input-default="10000"
+      confirm-label="ล้างพอร์ต"
+      @confirm="confirmReset"
+      @cancel="showReset = false"
+    />
   </div>
 </template>
 
@@ -177,6 +246,19 @@ h1 { font-size: 21px; font-weight: 500; margin: 0 0 5px; letter-spacing: -.01em;
 .ev.liquidation .ev-msg { color: #dc2626; font-weight: 500; }
 .ev.funding .ev-msg { color: var(--ink-3); }
 .tiny { font-size: 12px; }
+
+.bot { display: flex; flex-direction: column; gap: 10px; transition: border-color .15s ease; }
+.bot.on { border-color: var(--ink-3); }
+.bot-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.bot-head p.tiny { margin: 4px 0 0; line-height: 1.55; }
+.toggle {
+  flex: 0 0 auto; border: 1px solid var(--line); background: transparent; color: var(--ink);
+  padding: 6px 14px; border-radius: 8px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.toggle.on { background: var(--dark); color: #fff; border-color: var(--dark); }
+.toggle:disabled { opacity: .5; cursor: not-allowed; }
+.bot-status { font-size: 11.5px; border-top: 1px solid var(--line); padding-top: 10px; }
+.bot-status .detail { margin-top: 4px; color: var(--ink-3); }
 
 .note { display: flex; flex-direction: column; gap: 10px; }
 .note ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }

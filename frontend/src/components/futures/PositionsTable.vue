@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { fapi } from '../../futuresApi'
 import RiskLadder from './RiskLadder.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = defineProps({ positions: Array })
 const emit = defineEmits(['changed', 'focus-symbol'])
@@ -9,23 +10,34 @@ const emit = defineEmits(['changed', 'focus-symbol'])
 const busy = ref('')
 const err = ref('')
 const expanded = ref(null)
+const dialog = ref(null)   // { kind:'close'|'closeAll', symbol?, portion? }
 
-async function close(symbol, portion) {
-  busy.value = symbol + portion
-  err.value = ''
-  try {
-    const note = portion === 1 ? (prompt('ปิดไม้นี้เพราะอะไร? (บันทึกไว้อ่านย้อนหลัง)') ?? '') : 'ปิดบางส่วน'
-    await fapi.close(symbol, portion, note)
-    emit('changed')
-  } catch (e) { err.value = e.message } finally { busy.value = '' }
+function askClose(symbol, portion) {
+  dialog.value = { kind: 'close', symbol, portion }
+}
+function askCloseAll() {
+  dialog.value = { kind: 'closeAll' }
+}
+function cancelDialog() {
+  dialog.value = null
 }
 
-async function closeAll() {
-  if (!confirm(`ปิดทุกไม้ (${props.positions.length} ไม้) ที่ราคาตลาดตอนนี้?`)) return
-  busy.value = 'all'
+async function onConfirm(inputValue) {
+  const d = dialog.value
+  dialog.value = null
+  if (!d) return
   err.value = ''
-  try { await fapi.closeAll(); emit('changed') }
-  catch (e) { err.value = e.message } finally { busy.value = '' }
+  if (d.kind === 'close') {
+    busy.value = d.symbol + d.portion
+    try {
+      await fapi.close(d.symbol, d.portion, inputValue || '')
+      emit('changed')
+    } catch (e) { err.value = e.message } finally { busy.value = '' }
+  } else if (d.kind === 'closeAll') {
+    busy.value = 'all'
+    try { await fapi.closeAll(); emit('changed') }
+    catch (e) { err.value = e.message } finally { busy.value = '' }
+  }
 }
 
 const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -36,7 +48,7 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
   <div class="card">
     <div class="head">
       <span class="ttl">ไม้ที่เปิดอยู่ <em v-if="positions.length">({{ positions.length }})</em></span>
-      <button v-if="positions.length > 1" class="mini" :disabled="!!busy" @click="closeAll">
+      <button v-if="positions.length > 1" class="mini" :disabled="!!busy" @click="askCloseAll">
         ปิดทั้งหมด</button>
     </div>
 
@@ -72,8 +84,8 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
             {{ fmt(p.liq_price) }} <em>({{ p.liq_distance_pct.toFixed(1) }}%)</em>
           </span></div>
         <div class="c acts">
-          <button class="mini" :disabled="busy" @click.stop="close(p.symbol, 0.5)">ปิดครึ่ง</button>
-          <button class="mini solid" :disabled="busy" @click.stop="close(p.symbol, 1)">ปิดไม้</button>
+          <button class="mini" :disabled="busy" @click.stop="askClose(p.symbol, 0.5)">ปิดครึ่ง</button>
+          <button class="mini solid" :disabled="busy" @click.stop="askClose(p.symbol, 1)">ปิดไม้</button>
         </div>
       </div>
 
@@ -91,6 +103,22 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
         <p v-if="p.reason" class="muted reason">เหตุผลที่เข้า: {{ p.reason }}</p>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="!!dialog"
+      :title="dialog?.kind === 'closeAll' ? `ปิดทุกไม้ (${positions.length} ไม้)?` : 'ปิดไม้นี้'"
+      :message="dialog?.kind === 'closeAll'
+        ? 'ปิดทุกไม้ที่ราคาตลาดตอนนี้ทันที — ย้อนกลับไม่ได้'
+        : (dialog?.portion === 1 ? 'ปิดทั้งไม้ที่ราคาตลาดตอนนี้' : 'ปิดครึ่งหนึ่งของไม้ที่ราคาตลาดตอนนี้')"
+      :tone="dialog?.kind === 'closeAll' ? 'danger' : 'default'"
+      :with-input="dialog?.kind === 'close' && dialog?.portion === 1"
+      input-label="เหตุผลที่ปิด (ไม่บังคับ — บันทึกไว้อ่านย้อนหลัง)"
+      input-placeholder="เช่น ถึงเป้าที่วางแผนไว้ / เปลี่ยนใจเพราะ..."
+      input-type="textarea"
+      confirm-label="ปิดไม้"
+      @confirm="onConfirm"
+      @cancel="cancelDialog"
+    />
   </div>
 </template>
 

@@ -13,6 +13,7 @@ export const api = {
   stats: () => get('/journal/stats'),
   bot: () => get('/bot'),
   getAuto: () => get('/auto'),
+  getAutoStatus: () => get('/auto/status'),
   setAuto: (symbol, enabled) => post('/auto', { symbol, enabled }),
   openTrade: (b) => post('/journal/open', b),
   closeTrade: (b) => post('/journal/close', b),

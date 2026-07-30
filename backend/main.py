@@ -15,6 +15,8 @@ Trading Dashboard Backend — FastAPI
 import json
 import os
 import sys
+import threading
+import time
 from datetime import datetime
 
 import ccxt
@@ -26,8 +28,9 @@ from pydantic import BaseModel, Field
 _here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _here)
 sys.path.insert(0, os.path.dirname(_here))  # เผื่อวางไว้ใน backend/ ย่อย
-from copilot import analyze, position_size, FAST, SLOW, SLOPE_BARS  # สมองเดิม
+from copilot import analyze, position_size, FAST, SLOW, SLOPE_BARS, RISK_PCT  # สมองเดิม
 import binance_th
+from futures_api import router as futures_router  # เมนู futures แยก (เงินปลอม)
 
 # ---- ย้ายทั้งระบบมา Binance TH แล้ว (29 ก.ค. 2569) ----
 # ยืนยัน symbol จริงจาก binance_th_test.py — เลือกเฉพาะเหรียญหลักสภาพคล่องดี
@@ -65,10 +68,17 @@ JOURNAL_FILE = "journal_state.json"
 BOT_STATE = "paper_state.json"
 BOT_LOG = "paper_trades.log"
 AUTO_FILE = "auto_toggle.json"
+AUTO_LOG = "auto_trade.log"
+AUTO_POLL_SEC = 60   # ความถี่ที่ background thread เช็คสัญญาณ+auto-trade (แยกจาก REFRESH_SEC ของ copilot.py console)
+
+# journal_state.json ถูกอ่าน/เขียนได้ทั้งจาก HTTP handler (thread pool ของ uvicorn)
+# และจาก background auto-trade thread พร้อมกัน -> ต้องมี lock กันสองฝั่งเขียนชนกัน
+_journal_lock = threading.RLock()
 
 app = FastAPI(title="Trading Copilot API")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"],
                    allow_methods=["*"], allow_headers=["*"])
+app.include_router(futures_router)
 
 # ---------------- helpers ----------------
 
@@ -79,8 +89,12 @@ def load_json(path, default):
     return default
 
 def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
+    # เขียนแบบ atomic (เขียนไฟล์ชั่วคราวแล้ว rename) กันคนอ่านเจอไฟล์เขียนค้างครึ่งเดียว
+    # จำเป็นตอนนี้เพราะมีทั้ง background auto-trade thread และ HTTP handler เขียนไฟล์เดียวกัน
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 def journal_default():
     return {"cash": INITIAL, "positions": {s: None for s in SYMBOL_LIST}, "closed_trades": []}
@@ -113,8 +127,9 @@ def candles(symbol: str = SYMBOL, timeframe: str = "1h", limit: int = 200):
     return [{"time": c[0] // 1000, "open": c[1], "high": c[2],
              "low": c[3], "close": c[4]} for c in ohlcv]
 
-@app.get("/api/analysis")
-def analysis(symbol: str = SYMBOL):
+def _run_analysis(symbol: str) -> dict:
+    """สมองวิเคราะห์ — ใช้ร่วมกันทั้ง /api/analysis (แสดงผลบนจอ) และ background
+    auto-trade thread (ตัดสินใจจริง) เพื่อไม่ให้สองที่นี้เห็นสัญญาณไม่ตรงกัน"""
     ohlcv = ex_for(symbol).fetch_ohlcv(symbol, "1h", limit=SLOW + SLOPE_BARS + 5)
     closes = [c[4] for c in ohlcv[:-1]]          # แท่งปิดแล้วเท่านั้น
     a = analyze(closes)
@@ -122,6 +137,10 @@ def analysis(symbol: str = SYMBOL):
     a["live_price"] = ohlcv[-1][4]
     a["can_trade"] = a["regime"] == "TREND_UP" and a["bullish"]
     return a
+
+@app.get("/api/analysis")
+def analysis(symbol: str = SYMBOL):
+    return _run_analysis(symbol)
 
 # ---------------- journal (เงินปลอม) ----------------
 
@@ -172,6 +191,104 @@ def set_auto(body: AutoToggle):
     save_json(AUTO_FILE, s)
     return s
 
+# ---------------- background auto-trade loop (ทำงานอยู่ใน uvicorn เอง) ----------------
+# เดิมต้องรัน `python copilot.py` แยกเทอร์มินัลถึงจะเช็ค/เปิด/ปิดไม้จริง — สวิตช์ในเว็บ
+# แค่เขียน flag เฉยๆ ถ้าลืมรัน copilot.py ก็เหมือนสวิตช์เปิดแต่ไม่มีใครทำงานให้เลย
+# ย้าย loop มาไว้เป็น thread ในนี้แทน -> แค่เปิด uvicorn (ต้องเปิดอยู่แล้วให้เว็บทำงาน)
+# ก็ทำงานจริงทันที ไม่ต้องเปิดเทอร์มินัลที่ 3 อีกต่อไป
+
+_auto_status: dict[str, dict] = {}   # symbol -> {checked_at, regime, can_trade, action, detail}
+
+def auto_log(msg: str) -> None:
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} | {msg}"
+    print(line)
+    with open(AUTO_LOG, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+def _auto_trade_tick() -> None:
+    """เช็คทุกเหรียญที่เปิดสวิตช์ไว้ 1 รอบ — ใช้ analyze() ก้อนเดียวกับที่ /api/analysis
+    แสดงบนจอ (ผ่าน _run_analysis) เพื่อไม่ให้สิ่งที่เห็นกับสิ่งที่บอททำไม่ตรงกัน"""
+    enabled = auto_migrate(load_json(AUTO_FILE, auto_default()))
+    for symbol in SYMBOL_LIST:
+        if not enabled.get(symbol):
+            continue
+        try:
+            a = _run_analysis(symbol)
+        except Exception as e:
+            _auto_status[symbol] = {"checked_at": datetime.now().isoformat(timespec="seconds"),
+                                     "action": "error", "detail": str(e)}
+            auto_log(f"[{symbol}] ดึงราคา/วิเคราะห์ไม่ได้: {e} — ลองใหม่รอบหน้า")
+            continue
+
+        with _journal_lock:
+            j = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
+            t = j["positions"].get(symbol)
+        price = a["live_price"]
+
+        status = {"checked_at": datetime.now().isoformat(timespec="seconds"),
+                  "regime": a["regime"], "can_trade": a["can_trade"], "price": price}
+
+        if t is None:
+            if a["can_trade"]:
+                stop = min(a["swing_low"], a["ma_slow"])
+                if stop < price:
+                    try:
+                        r = open_trade(OpenTrade(
+                            symbol=symbol, stop=round(stop, 2), risk_pct=RISK_PCT,
+                            reason=f"[AUTO] เข้าตามสัญญาณ MA{FAST}/{SLOW} ผ่าน regime filter"))
+                        status["action"] = "opened"
+                        status["detail"] = f"เปิดที่ {r['entry']:,.2f}"
+                        auto_log(f"[{symbol}] AUTO เปิดไม้ที่ {r['entry']:,.2f} | stop={stop:,.2f} "
+                                 f"| regime={a['regime']} slope={a['slope_pct']:+.2f}%")
+                    except HTTPException as e:
+                        status["action"] = "error"
+                        status["detail"] = e.detail
+                        auto_log(f"[{symbol}] เปิดไม้ไม่สำเร็จ: {e.detail}")
+                else:
+                    status["action"] = "waiting"
+                    status["detail"] = "stop คำนวณได้สูงกว่าราคาปัจจุบัน — ข้ามรอบนี้"
+            else:
+                status["action"] = "waiting"
+                status["detail"] = f"regime={a['regime']} — เงื่อนไขฝั่งซื้อยังไม่ครบ"
+        else:
+            hit_stop = price <= t["stop"]
+            hit_target = t["target"] and price >= t["target"]
+            signal_off = not a["can_trade"]
+            if hit_stop or hit_target or signal_off:
+                reason = "stop" if hit_stop else "target" if hit_target else "สัญญาณดับ"
+                try:
+                    r = close_trade(CloseTrade(symbol=symbol, followed_plan=True,
+                                               note=f"[AUTO] ปิดตามเงื่อนไข: {reason}"))
+                    status["action"] = "closed"
+                    status["detail"] = f"ปิดที่ {r['exit']:,.2f} ({reason}) PnL {r['pnl_pct']:+.2f}%"
+                    auto_log(f"[{symbol}] AUTO ปิดไม้ที่ {r['exit']:,.2f} เหตุผล={reason}")
+                except HTTPException as e:
+                    status["action"] = "error"
+                    status["detail"] = e.detail
+                    auto_log(f"[{symbol}] ปิดไม้ไม่สำเร็จ: {e.detail}")
+            else:
+                status["action"] = "holding"
+                status["detail"] = f"ถือตั้งแต่ {t['time_in']} @ {t['entry']:,.2f}"
+
+        _auto_status[symbol] = status
+
+def _auto_trade_loop() -> None:
+    auto_log(f"Auto-trade thread เริ่มทำงานใน uvicorn เอง | เช็คทุก {AUTO_POLL_SEC}s "
+             f"| ไม่ต้องรัน copilot.py แยกอีกต่อไปเพื่อให้ auto-trade ทำงาน")
+    while True:
+        try:
+            _auto_trade_tick()
+        except Exception as e:
+            auto_log(f"ERROR ใน auto-trade loop: {e} — ลองใหม่รอบหน้า")
+        time.sleep(AUTO_POLL_SEC)
+
+threading.Thread(target=_auto_trade_loop, daemon=True, name="auto-trade").start()
+
+@app.get("/api/auto/status")
+def auto_status():
+    """สถานะล่าสุดของบอทต่อเหรียญ — ให้หน้าเว็บเห็นว่า 'มีใครเฝ้าดูอยู่จริง' ไม่ใช่แค่ toggle ว่างๆ"""
+    return _auto_status
+
 @app.get("/api/journal")
 def journal():
     s = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
@@ -187,47 +304,49 @@ def journal():
 
 @app.post("/api/journal/open")
 def open_trade(body: OpenTrade):
-    s = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
-    if body.symbol not in s["positions"]:
-        raise HTTPException(400, f"ไม่รู้จัก symbol {body.symbol}")
-    if s["positions"][body.symbol]:
-        raise HTTPException(400, f"มีไม้ {body.symbol} เปิดอยู่แล้ว — ปิดก่อนถึงเปิดใหม่ได้")
-    price = live_price(body.symbol)
-    if body.stop >= price:
-        raise HTTPException(400, "stop ต้องต่ำกว่าราคาปัจจุบัน (เราเล่นฝั่งซื้อ)")
-    units, cost = position_size(s["cash"], body.risk_pct, price, body.stop)
-    cost = min(cost, s["cash"])
-    units = cost / price
-    fee = cost * FEE_RATE
-    s["cash"] -= (cost + fee)
-    s["positions"][body.symbol] = {
-        "symbol": body.symbol,
-        "time_in": f"{datetime.now():%Y-%m-%d %H:%M:%S}",
-        "entry": price, "stop": body.stop, "target": body.target,
-        "units": units, "cost": cost, "fee_in": fee,
-        "risk_pct": body.risk_pct, "reason": body.reason.strip(),
-    }
-    save_json(JOURNAL_FILE, s)
-    return {"ok": True, "entry": price, "units": units}
+    with _journal_lock:
+        s = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
+        if body.symbol not in s["positions"]:
+            raise HTTPException(400, f"ไม่รู้จัก symbol {body.symbol}")
+        if s["positions"][body.symbol]:
+            raise HTTPException(400, f"มีไม้ {body.symbol} เปิดอยู่แล้ว — ปิดก่อนถึงเปิดใหม่ได้")
+        price = live_price(body.symbol)
+        if body.stop >= price:
+            raise HTTPException(400, "stop ต้องต่ำกว่าราคาปัจจุบัน (เราเล่นฝั่งซื้อ)")
+        units, cost = position_size(s["cash"], body.risk_pct, price, body.stop)
+        cost = min(cost, s["cash"])
+        units = cost / price
+        fee = cost * FEE_RATE
+        s["cash"] -= (cost + fee)
+        s["positions"][body.symbol] = {
+            "symbol": body.symbol,
+            "time_in": f"{datetime.now():%Y-%m-%d %H:%M:%S}",
+            "entry": price, "stop": body.stop, "target": body.target,
+            "units": units, "cost": cost, "fee_in": fee,
+            "risk_pct": body.risk_pct, "reason": body.reason.strip(),
+        }
+        save_json(JOURNAL_FILE, s)
+        return {"ok": True, "entry": price, "units": units}
 
 @app.post("/api/journal/close")
 def close_trade(body: CloseTrade):
-    s = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
-    t = s["positions"].get(body.symbol)
-    if not t:
-        raise HTTPException(400, f"ไม่มีไม้ {body.symbol} เปิดอยู่")
-    price = live_price(body.symbol)
-    gross = t["units"] * price
-    fee = gross * FEE_RATE
-    s["cash"] += gross - fee
-    t.update(time_out=f"{datetime.now():%Y-%m-%d %H:%M:%S}", exit=price,
-             fee_out=fee, pnl_pct=(price / t["entry"] - 1) * 100,
-             pnl_money=gross - fee - t["cost"] - t["fee_in"],
-             followed_plan=body.followed_plan, note=body.note.strip())
-    s["closed_trades"].append(t)
-    s["positions"][body.symbol] = None
-    save_json(JOURNAL_FILE, s)
-    return {"ok": True, "exit": price, "pnl_pct": t["pnl_pct"]}
+    with _journal_lock:
+        s = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
+        t = s["positions"].get(body.symbol)
+        if not t:
+            raise HTTPException(400, f"ไม่มีไม้ {body.symbol} เปิดอยู่")
+        price = live_price(body.symbol)
+        gross = t["units"] * price
+        fee = gross * FEE_RATE
+        s["cash"] += gross - fee
+        t.update(time_out=f"{datetime.now():%Y-%m-%d %H:%M:%S}", exit=price,
+                 fee_out=fee, pnl_pct=(price / t["entry"] - 1) * 100,
+                 pnl_money=gross - fee - t["cost"] - t["fee_in"],
+                 followed_plan=body.followed_plan, note=body.note.strip())
+        s["closed_trades"].append(t)
+        s["positions"][body.symbol] = None
+        save_json(JOURNAL_FILE, s)
+        return {"ok": True, "exit": price, "pnl_pct": t["pnl_pct"]}
 
 @app.get("/api/journal/stats")
 def stats():

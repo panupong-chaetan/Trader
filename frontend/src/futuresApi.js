@@ -33,4 +33,7 @@ export const fapi = {
     req('/leverage', { method: 'POST', body: JSON.stringify({ symbol, leverage }) }),
   reset: (balance) =>
     req('/reset', { method: 'POST', body: JSON.stringify({ balance, confirm: true }) }),
+  botStatus: () => req('/bot-status'),
+  setBotEnabled: (enabled) =>
+    req('/bot-toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
 }

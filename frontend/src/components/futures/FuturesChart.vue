@@ -5,8 +5,11 @@
  * รองรับ lightweight-charts ทั้ง v4 และ v5
  */
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { createChart, CandlestickSeries, LineStyle } from 'lightweight-charts'
+// namespace import: v4 ไม่มี export ชื่อ CandlestickSeries — named import ตัวนี้
+// ทำให้ Vite โยน "does not provide an export named" ตั้งแต่โหลดโมดูล (จอขาวทันที)
+import * as LWC from 'lightweight-charts'
 import { fapi } from '../../futuresApi'
+const { createChart, CandlestickSeries, LineStyle } = LWC
 
 const props = defineProps({ symbol: String, position: Object, markPrice: Number })
 const el = ref(null)

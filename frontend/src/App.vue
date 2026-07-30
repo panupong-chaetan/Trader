@@ -10,7 +10,9 @@ import JournalTable from './components/JournalTable.vue'
 import AutoToggle from './components/AutoToggle.vue'
 import AssetTabs from './components/AssetTabs.vue'
 import PortfolioCards from './components/PortfolioCards.vue'
+import FuturesView from './components/futures/FuturesView.vue'
 
+const view = ref('spot')          // 'spot' | 'futures'
 const assetList = ref(['BTCTHB'])
 const symbol = ref('BTCTHB')
 const analysis = ref(null)
@@ -33,6 +35,7 @@ function browserNotify(a) {
 }
 
 async function refresh() {
+  if (view.value !== 'spot') return
   try {
     ;[analysis.value, journal.value, stats.value, bot.value] = await Promise.all([
       api.analysis(symbol.value), api.journal(), api.stats(), api.bot(),
@@ -55,13 +58,14 @@ onMounted(async () => {
 })
 
 watch(symbol, refresh)
+watch(view, (v) => { if (v === 'spot') refresh() })
 onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
   <div style="display:flex" id="top">
-    <Sidebar />
-    <div style="flex:1;max-width:1100px;margin:0 auto;padding:24px 16px;
+    <Sidebar :view="view" @nav="view = $event" />
+    <div v-if="view === 'spot'" style="flex:1;max-width:1100px;margin:0 auto;padding:24px 16px;
                 display:flex;flex-direction:column;gap:16px">
       <header style="display:flex;justify-content:space-between;align-items:center">
         <div>
@@ -96,6 +100,10 @@ onUnmounted(() => clearInterval(timer))
       <div id="journal">
         <JournalTable v-if="journal" :journal="journal" @closed="refresh" />
       </div>
+    </div>
+
+    <div v-else-if="view === 'futures'" style="flex:1;max-width:1280px;margin:0 auto;padding:24px 16px">
+      <FuturesView />
     </div>
   </div>
 </template>
