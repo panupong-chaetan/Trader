@@ -33,7 +33,7 @@ watch(() => props.open, async (v) => {
 })
 
 function ok() {
-  emit('confirm', props.withInput ? value.value : true)
+  emit('confirm', props.withInput ? value.value : undefined)
 }
 function cancel() {
   emit('cancel')

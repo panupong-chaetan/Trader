@@ -30,7 +30,7 @@ async function onConfirm(inputValue) {
   if (d.kind === 'close') {
     busy.value = d.symbol + d.portion
     try {
-      await fapi.close(d.symbol, d.portion, inputValue || '')
+      await fapi.close(d.symbol, d.portion, inputValue ?? '')
       emit('changed')
     } catch (e) { err.value = e.message } finally { busy.value = '' }
   } else if (d.kind === 'closeAll') {
@@ -84,8 +84,8 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
             {{ fmt(p.liq_price) }} <em>({{ p.liq_distance_pct.toFixed(1) }}%)</em>
           </span></div>
         <div class="c acts">
-          <button class="mini" :disabled="busy" @click.stop="askClose(p.symbol, 0.5)">ปิดครึ่ง</button>
-          <button class="mini solid" :disabled="busy" @click.stop="askClose(p.symbol, 1)">ปิดไม้</button>
+          <button class="mini" :disabled="!!busy" @click.stop="askClose(p.symbol, 0.5)">ปิดครึ่ง</button>
+          <button class="mini solid" :disabled="!!busy" @click.stop="askClose(p.symbol, 1)">ปิดไม้</button>
         </div>
       </div>
 
