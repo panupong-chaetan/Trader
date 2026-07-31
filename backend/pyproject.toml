@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["data*", "risk*", "engine*", "analytics*", "strategy*", "report*", "runner*"]
+include = ["data*", "risk*", "engine*", "analytics*", "strategy*", "report*", "runner*", "strategies*", "research*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
