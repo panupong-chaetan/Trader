@@ -29,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     parser = build_parser()
