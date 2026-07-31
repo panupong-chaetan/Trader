@@ -1,0 +1,23 @@
+{
+  "experiment_id": "ema_trend_pullback_20260731T184027_ce777b2e",
+  "strategy_name": "ema_trend_pullback",
+  "category": "trend_following",
+  "hypothesis": "Price pulling back to the EMA20 within an EMA50>EMA200 uptrend (or the mirrored downtrend) resumes in the trend direction.",
+  "market": "BTC/USDT",
+  "timeframe": "15m",
+  "start_date": "2020-01-01T00:00:00Z",
+  "end_date": "2026-07-31T12:00:00Z",
+  "initial_capital": 10000.0,
+  "total_signals": 16374,
+  "total_trades": 7183,
+  "win_rate": 0.3313378811081721,
+  "profit_factor": 0.5512500604811628,
+  "expectancy": -1.3921733199337696,
+  "sharpe_ratio": -12.421269155967199,
+  "max_drawdown": 0.999998129629434,
+  "total_return": -99.99980957084271,
+  "total_fees": 7163.952300904428,
+  "rejected_signals": 0,
+  "report_directory": "..\\reports\\run_20260731T143348_de3fb080",
+  "created_at": "2026-07-31T18:40:27.943774Z"
+}
