@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: trader-v2-backend
+Version: 0.1.0
+Requires-Python: >=3.12
+Requires-Dist: polars>=1.9
+Requires-Dist: numpy>=2.1
+Requires-Dist: ccxt>=4.4
+Requires-Dist: pydantic>=2.9
+Requires-Dist: tzdata>=2024.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3; extra == "dev"
