@@ -7,8 +7,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { fapi } from '../../futuresApi'
 import AccountBar from './AccountBar.vue'
 import OrderPanel from './OrderPanel.vue'
-import PositionsTable from './PositionsTable.vue'
-import HistoryTable from './HistoryTable.vue'
+import PositionsHistoryTabs from './PositionsHistoryTabs.vue'
 import FuturesChart from './FuturesChart.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import FuturesBotPanel from './FuturesBotPanel.vue'
@@ -122,15 +121,15 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
       <div class="grid">
         <div class="col-main">
           <FuturesChart :symbol="symbol" :position="heldPosition" :mark-price="current.mark_price" />
-          <PositionsTable :positions="account.positions" @changed="onChanged" />
-          <HistoryTable :trades="trades" :stats="stats" />
-        </div>
 
-        <div class="col-side">
-          <OrderPanel :symbol="symbol" :mark-price="current.mark_price"
-                      :available="account.available_margin" :leverage="levOf"
-                      :funding-pct="current.funding_rate_pct" :locked="!!heldPosition"
-                      @submitted="onChanged" @leverage="refresh(false)" />
+          <!-- รวม "เปิดอยู่"/"ปิดแล้ว" เป็น tab เดียว — เดิมตอนไม่มีประวัติ การ์ด
+               ไม้ที่ปิดแล้วจะว่างเปล่าแต่ยังกินพื้นที่แนวตั้งไปฟรีๆ -->
+          <PositionsHistoryTabs :positions="account.positions" :trades="trades" :stats="stats"
+                                @changed="onChanged" />
+
+          <!-- บอทอัตโนมัติ + บันทึกเหตุการณ์ — เต็มความกว้าง เรียงต่อกัน
+               (ไม่ใช่ 2 คอลัมน์เคียงกันแบบเดิม) -->
+          <FuturesBotPanel v-if="botStatus" :status="botStatus" :busy="botBusy" @toggle="toggleBot" />
 
           <div class="card feed">
             <span class="ttl">บันทึกเหตุการณ์</span>
@@ -140,8 +139,6 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
               <span class="ev-msg">{{ e.message }}</span>
             </div>
           </div>
-
-          <FuturesBotPanel v-if="botStatus" :status="botStatus" :busy="botBusy" @toggle="toggleBot" />
 
           <div class="card note">
             <span class="ttl">อ่านก่อนซ้อม</span>
@@ -154,6 +151,14 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
               <li>TP/SL/liquidation ทำงานฝั่ง backend ทุก 10 วิ ปิดเบราว์เซอร์ก็ยังตัด</li>
             </ul>
           </div>
+        </div>
+
+        <!-- คอลัมน์ขวา: เหลือแค่ OrderPanel ตัวเดียว ทำ sticky ให้เห็นตลอดตอนเลื่อนจอ -->
+        <div class="col-side">
+          <OrderPanel :symbol="symbol" :mark-price="current.mark_price"
+                      :available="account.available_margin" :leverage="levOf"
+                      :funding-pct="current.funding_rate_pct" :locked="!!heldPosition"
+                      @submitted="onChanged" @leverage="refresh(false)" />
         </div>
       </div>
     </template>
@@ -175,7 +180,15 @@ const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDi
 </template>
 
 <style scoped>
-.wrap { display: flex; flex-direction: column; gap: 18px; }
+.wrap {
+  /* เพจนี้เคยพึ่ง max-width จาก wrapper ใน App.vue เก่า (ก่อนย้ายไป router) —
+     ตอน refactor เป็น <router-view/> wrapper นั้นหายไปด้วย แต่ .wrap ไม่เคยมี
+     max-width ของตัวเองเลย เลยยืดเต็มจอไม่มีเพดานบนจอกว้างๆ ต้องประกาศเองตรงนี้
+     เสมอ ห้ามพึ่งพา wrapper จากภายนอกอีก (กว้างกว่า spot เพราะเป็น layout
+     2 คอลัมน์ที่มีข้อมูลแน่นกว่า ต้องการพื้นที่มากกว่าหน้า spot) */
+  max-width: 1440px; margin: 0 auto; padding: 24px 20px;
+  display: flex; flex-direction: column; gap: 18px;
+}
 .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 h1 { font-size: 21px; font-weight: 500; margin: 0 0 5px; letter-spacing: -.01em; }
 .sub { font-size: 12.5px; margin: 0; max-width: 62ch; line-height: 1.6; }
@@ -207,6 +220,7 @@ h1 { font-size: 21px; font-weight: 500; margin: 0 0 5px; letter-spacing: -.01em;
 
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 18px; align-items: start; }
 .col-main, .col-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.col-side { position: sticky; top: 18px; }
 .ttl { font-weight: 500; font-size: 13px; }
 
 .feed { display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; }
@@ -222,5 +236,5 @@ h1 { font-size: 21px; font-weight: 500; margin: 0 0 5px; letter-spacing: -.01em;
 .note li { font-size: 12px; line-height: 1.6; color: var(--ink-3); }
 .note b { color: var(--ink); font-weight: 500; }
 
-@media (max-width: 1080px) { .grid { grid-template-columns: 1fr; } }
+@media (max-width: 1080px) { .grid { grid-template-columns: 1fr; } .col-side { position: static; } }
 </style>

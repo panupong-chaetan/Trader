@@ -1,61 +1,15 @@
 {
-  "wallet_balance": 9993.686599999999,
+  "wallet_balance": 10000.0,
   "initial_balance": 10000.0,
-  "positions": {
-    "BTC/USDT": {
-      "side": "long",
-      "qty": 0.14834269265052144,
-      "entry_price": 64722.09603623,
-      "leverage": 5,
-      "margin": 1920.21,
-      "tp": null,
-      "sl": 64167.03,
-      "fees_paid": 4.8005249999999995,
-      "funding_paid": 0.0,
-      "realized_partial": 0.0,
-      "opened_at": "2026-07-30T18:37:24+00:00",
-      "reason": "[BOT] TREND_UP MA20/50 slope=+0.39%",
-      "adds": 0,
-      "liq_price": 51985.619306208835
-    },
-    "BNB/USDT": {
-      "side": "long",
-      "qty": 5.077498052894236,
-      "entry_price": 595.9135717,
-      "leverage": 5,
-      "margin": 605.15,
-      "tp": null,
-      "sl": 574.62,
-      "fees_paid": 1.512875,
-      "funding_paid": 0.0,
-      "realized_partial": 0.0,
-      "opened_at": "2026-07-30T18:46:17+00:00",
-      "reason": "[BOT] TREND_UP MA20/50 slope=+0.72%",
-      "adds": 0,
-      "liq_price": 478.6454391164659
-    }
-  },
+  "positions": {},
   "history": [],
-  "events": [
-    {
-      "ts": "2026-07-30T18:46:17+00:00",
-      "kind": "open",
-      "symbol": "BNB/USDT",
-      "message": "เปิด LONG 5.077498 @ 595.91 | 5x | margin 605.15 | liq 478.65"
-    },
-    {
-      "ts": "2026-07-30T18:37:24+00:00",
-      "kind": "open",
-      "symbol": "BTC/USDT",
-      "message": "เปิด LONG 0.148343 @ 64,722.10 | 5x | margin 1920.21 | liq 51,985.62"
-    }
-  ],
+  "events": [],
   "leverage": {},
   "peak_equity": 10000.0,
-  "max_drawdown_pct": 0.14809910394678807,
-  "total_fees": 6.3134,
+  "max_drawdown_pct": 0.0,
+  "total_fees": 0.0,
   "total_funding": 0.0,
   "liquidations": 0,
-  "created_at": "2026-07-30T18:36:52+00:00",
-  "last_funding_slot": "2026-07-30T16"
+  "created_at": "2026-07-31T09:25:14+00:00",
+  "last_funding_slot": "2026-07-31T08"
 }

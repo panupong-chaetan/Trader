@@ -8,6 +8,7 @@ const post = (p, body) => fetch(`${BASE}${p}`, {
 export const api = {
   assets: () => get('/assets'),
   analysis: (symbol) => get(`/analysis?symbol=${encodeURIComponent(symbol)}`),
+  liquidity: (symbol) => get(`/liquidity?symbol=${encodeURIComponent(symbol)}`),
   candles: (symbol, tf = '1h') => get(`/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}`),
   journal: () => get('/journal'),
   stats: () => get('/journal/stats'),

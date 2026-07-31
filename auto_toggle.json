@@ -2,6 +2,6 @@
   "BTCTHB": true,
   "ETHTHB": true,
   "BNBTHB": true,
-  "SOLTHB": true,
-  "XRPTHB": true
+  "SOLTHB": false,
+  "XRPTHB": false
 }

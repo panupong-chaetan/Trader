@@ -142,6 +142,20 @@ def _run_analysis(symbol: str) -> dict:
 def analysis(symbol: str = SYMBOL):
     return _run_analysis(symbol)
 
+@app.get("/api/liquidity")
+def liquidity(symbol: str = SYMBOL):
+    """เช็คสภาพคล่องเหรียญตรงๆ — ใช้วินิจฉัยว่าราคานิ่งเพราะตลาดนิ่งจริง หรือดึงราคา
+    ไม่ได้/ไม่มีคนเทรด ก่อนสงสัยว่าโค้ดมีบั๊ก"""
+    try:
+        vol = ex_for(symbol).fetch_24h_volume(symbol)
+    except Exception as e:
+        return {"symbol": symbol, "volume_24h": None, "ok": None, "error": str(e)}
+    if vol is None:
+        return {"symbol": symbol, "volume_24h": None, "ok": None,
+                "note": "exchange นี้ไม่คืนข้อมูล volume หรือ field ไม่ตรงที่คาดไว้"}
+    return {"symbol": symbol, "volume_24h": vol, "ok": vol >= MIN_24H_VOLUME,
+            "min_required": MIN_24H_VOLUME}
+
 # ---------------- journal (เงินปลอม) ----------------
 
 class OpenTrade(BaseModel):
@@ -205,6 +219,25 @@ def auto_log(msg: str) -> None:
     with open(AUTO_LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
+# ขั้นต่ำ volume 24 ชม. (สกุลอ้างอิง เช่น THB) ที่ยอมให้บอทเปิดไม้ใหม่ — เกณฑ์คร่าวๆ
+# ตั้งใจกันเคสคู่เหรียญที่แทบไม่มีคนเทรดจริง (ราคาล่าสุดอาจค้างมานาน ไม่ใช่ตลาดนิ่งจริง)
+# ปรับตัวเลขนี้ได้ถ้าเจอว่าเข้มไป/หลวมไปเมื่อเทียบกับสภาพคล่องจริงของแต่ละคู่
+MIN_24H_VOLUME = 100_000.0
+
+def _liquidity_ok(symbol: str) -> tuple[bool, str]:
+    """เช็คสภาพคล่องก่อนเปิดไม้ใหม่ — คืน (ผ่านไหม, ข้อความอธิบาย)
+    ถ้าดึง volume ไม่ได้ (field ไม่ตรงที่คาด/exchange ไม่รองรับ) ให้ผ่านไปก่อน
+    (fail-open) ไม่ให้ตัวกรองที่ยังไม่ยืนยัน 100% ไปบล็อกการเทรดที่ถูกต้องทั้งหมด"""
+    try:
+        vol = ex_for(symbol).fetch_24h_volume(symbol)
+    except Exception:
+        vol = None
+    if vol is None:
+        return True, ""
+    if vol < MIN_24H_VOLUME:
+        return False, f"ปริมาณเทรด 24 ชม. ต่ำ ({vol:,.0f}) — ต่ำกว่าเกณฑ์ {MIN_24H_VOLUME:,.0f} ข้ามไปก่อน"
+    return True, ""
+
 def _auto_trade_tick() -> None:
     """เช็คทุกเหรียญที่เปิดสวิตช์ไว้ 1 รอบ — ใช้ analyze() ก้อนเดียวกับที่ /api/analysis
     แสดงบนจอ (ผ่าน _run_analysis) เพื่อไม่ให้สิ่งที่เห็นกับสิ่งที่บอททำไม่ตรงกัน"""
@@ -230,6 +263,13 @@ def _auto_trade_tick() -> None:
 
         if t is None:
             if a["can_trade"]:
+                liquid, liquidity_note = _liquidity_ok(symbol)
+                if not liquid:
+                    status["action"] = "waiting"
+                    status["detail"] = liquidity_note
+                    auto_log(f"[{symbol}] ข้ามการเปิดไม้: {liquidity_note}")
+                    _auto_status[symbol] = status
+                    continue
                 stop = min(a["swing_low"], a["ma_slow"])
                 if stop < price:
                     try:
@@ -294,13 +334,20 @@ def journal():
     s = journal_migrate(load_json(JOURNAL_FILE, journal_default()))
     positions_value = 0.0
     prices = {}
+    price_errors = {}
     for sym, t in s["positions"].items():
         if t:
-            p = live_price(sym)
-            prices[sym] = p
-            positions_value += t["units"] * p
+            try:
+                p = live_price(sym)
+                prices[sym] = p
+                positions_value += t["units"] * p
+            except Exception as e:
+                # เหรียญเดียวดึงราคาไม่ได้ต้องไม่ทำให้ทั้งสมุดเทรดพังหมด — ข้ามแค่เหรียญนั้น
+                # และบอกไปตรงๆ แทนที่จะเงียบแล้วให้ frontend เข้าใจผิดว่าราคาไม่ขยับ
+                price_errors[sym] = str(e)
+                positions_value += t["cost"]  # ใช้ทุนเดิมกันพอร์ตรวมเพี้ยนไปเลย
     equity = s["cash"] + positions_value
-    return {**s, "equity": equity, "prices": prices}
+    return {**s, "equity": equity, "prices": prices, "price_errors": price_errors}
 
 @app.post("/api/journal/open")
 def open_trade(body: OpenTrade):

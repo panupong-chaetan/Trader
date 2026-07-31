@@ -4,7 +4,7 @@ import { fapi } from '../../futuresApi'
 import RiskLadder from './RiskLadder.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
-const props = defineProps({ positions: Array })
+const props = defineProps({ positions: Array, bare: Boolean })
 const emit = defineEmits(['changed', 'focus-symbol'])
 
 const busy = ref('')
@@ -45,9 +45,10 @@ const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
 </script>
 
 <template>
-  <div class="card">
-    <div class="head">
-      <span class="ttl">ไม้ที่เปิดอยู่ <em v-if="positions.length">({{ positions.length }})</em></span>
+  <div :class="bare ? '' : 'card'">
+    <div class="head" :class="{ 'head-bare': bare }">
+      <span v-if="!bare" class="ttl">ไม้ที่เปิดอยู่ <em v-if="positions.length">({{ positions.length }})</em></span>
+      <span v-else />
       <button v-if="positions.length > 1" class="mini" :disabled="!!busy" @click="askCloseAll">
         ปิดทั้งหมด</button>
     </div>

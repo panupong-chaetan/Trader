@@ -1,5 +1,5 @@
 <script setup>
-const props = defineProps({ trades: Array, stats: Object })
+const props = defineProps({ trades: Array, stats: Object, bare: Boolean })
 const fmt = (v, d = 2) => (v ?? 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
 const sign = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '')
 const LABEL = { manual: 'ปิดมือ', tp: 'ถึงเป้า', sl: 'โดน SL', liquidation: 'ล้างพอร์ต' }
@@ -7,9 +7,9 @@ const when = (s) => new Date(s).toLocaleString('th-TH', { day: '2-digit', month:
 </script>
 
 <template>
-  <div class="card">
-    <div class="head">
-      <span class="ttl">ไม้ที่ปิดแล้ว</span>
+  <div :class="bare ? '' : 'card'">
+    <div v-if="!bare || stats?.trades" class="head">
+      <span v-if="!bare" class="ttl">ไม้ที่ปิดแล้ว</span>
       <span v-if="stats?.trades" class="muted small">
         {{ stats.trades }} ไม้ · ชนะ {{ stats.win_rate_pct.toFixed(0) }}% ·
         เฉลี่ยชนะ {{ fmt(stats.avg_win) }} / แพ้ {{ fmt(stats.avg_loss) }} ·
