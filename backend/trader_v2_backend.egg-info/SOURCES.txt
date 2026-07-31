@@ -14,9 +14,17 @@ engine/backtester.py
 engine/loader.py
 engine/models.py
 report/__init__.py
+report/builder.py
+report/export.py
+research/__init__.py
+research/models.py
 risk/__init__.py
 risk/sizing.py
 runner/__init__.py
+runner/cli.py
+strategies/__init__.py
+strategies/contracts.py
+strategies/donchian_breakout.py
 strategy/__init__.py
 strategy/ema_trend_pullback.py
 strategy/indicators.py

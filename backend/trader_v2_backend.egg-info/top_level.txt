@@ -2,6 +2,8 @@ analytics
 data
 engine
 report
+research
 risk
 runner
+strategies
 strategy
