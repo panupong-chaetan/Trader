@@ -1,5 +1,6 @@
 pyproject.toml
 analytics/__init__.py
+analytics/metrics.py
 data/__init__.py
 data/cli.py
 data/client.py
@@ -9,7 +10,16 @@ data/pipeline.py
 data/storage.py
 data/validator.py
 engine/__init__.py
+engine/backtester.py
+engine/loader.py
+engine/models.py
+report/__init__.py
 risk/__init__.py
+risk/sizing.py
+runner/__init__.py
+strategy/__init__.py
+strategy/ema_trend_pullback.py
+strategy/indicators.py
 trader_v2_backend.egg-info/PKG-INFO
 trader_v2_backend.egg-info/SOURCES.txt
 trader_v2_backend.egg-info/dependency_links.txt
